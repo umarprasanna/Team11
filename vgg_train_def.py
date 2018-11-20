@@ -56,7 +56,30 @@ def rleToMask(rleString,height,width):
     
     return img
 
+def add_samples(dataset,train_ids,count,mean,variance):
+    """
+    Creates maximum of 4000 images with noise added. Returns a list of updated train ids inclusive of added noisy images and clean masks
+    dataset: dataset class generated object
+    count: Number of samples
+    mean: Mean of Gaussian noise
+    variance: Variance of Gaussian noise
+    """
 
+    #Creating samples by adding noise
+    list_valid_count = 4000
+
+    if count > list_valid_count:
+        raise ValueError("You cannot input more than 4000")
+
+    ids_list = np.random.choice(train_ids,count,replace=False)
+    img_count = len(ids_list)
+    for n in range(img_count):
+        im, mask = dataset[n]
+        transformed_image = add_random_gaussian_noise(im,mean,variance)
+        save_img(train_path + '/images/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png',transformed_image)
+
+    new_train_ids = next(os.walk(train_path+"images"))[2]
+    return new_train_ids
 
 train_mask = pd.read_csv('train.csv')
 #depth data
@@ -86,6 +109,10 @@ from vggGenerator import vggGenerator
 train_ids = next(os.walk(train_path+"images"))[2]
 test_ids = train_ids[int(len(train_ids) * .85):len(train_ids)]
 train_ids = train_ids[0:int(len(train_ids) * .85)] 
+
+#Add additional samples
+new_train_ids = add_samples(dataset,train_ids,count=4000,mean=10.0,variance=0.1)
+
 im_width = 128
 im_height = 128
 border = 5
