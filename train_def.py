@@ -117,7 +117,7 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     mask = img_to_array(load_img(path + '/masks/' + id_, grayscale=True))
     mask = resize(mask, (128, 128, 1), mode='constant', preserve_range=True)
 
-    X[n, ..., 1] = x_img.squeeze() / 255
+    X[n, ..., 0] = x_img.squeeze() / 255
     X[n, ..., 1] = x_csum.squeeze()
     y[n] = mask / 255
 
@@ -127,7 +127,7 @@ from sklearn.model_selection import train_test_split
 X_train, X_valid, X_feat_train, X_feat_valid, y_train, y_valid = train_test_split(X, X_feat, y, test_size=0.15, random_state=42)
 
 callbacks = [
-    EarlyStopping(patience=5, verbose=1),
+    #EarlyStopping(patience=5, verbose=1),
     ReduceLROnPlateau(patience=3, verbose=1),
     ModelCheckpoint('model-tgs-salt-1.h5', verbose=1, save_best_only=True, save_weights_only=True)
 ]
