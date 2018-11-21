@@ -11,6 +11,7 @@ import pandas as pd
 import torch
 import TGSSaltDataset as tg
 import UNET
+import skimage.io as io
 #just in case we need a backup datasets
 from torch.utils import data
 
@@ -184,12 +185,10 @@ train_path = "./train/"
 
 #list of files
 file_list = list(train_mask['id'].values)
-#define our dataset using our class
-dataset = tg.TGSSaltDataset(train_path, file_list)
 
 import sys
 from tqdm import tqdm
-from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
+from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img, save_img
 from skimage.transform import resize
 from keras.models import Model, load_model
 from keras.layers import Input
@@ -201,7 +200,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from keras import backend as K
 from sklearn.model_selection import train_test_split
 
-train_ids = next(os.walk(train_path+"images"))[2]
+#train_ids = next(os.walk(train_path+"images"))[2]
 
 #train image + mask data
 train_mask = pd.read_csv('train.csv')
@@ -216,16 +215,16 @@ im_chan = 2 # Number of channels: first is original and second cumsum(axis=0)
 n_features = 1 # Number of extra features, like depth
 
 #training path
-train_path = "./"
-test_path = "./"
+train_path = "./train/"
+test_path = "./test/"
 
 #list of files
 train_ids = next(os.walk(train_path+"images"))[2]
-test_ids = next(os.walk(test_path+"test/images"))[2]
+test_ids = next(os.walk(test_path+"images"))[2]
 
 #define our dataset using our class
-train_dataset = TGSSaltDataset(train_path, train_ids,data_type='train')
-test_dataset = TGSSaltDataset(test_path, test_ids,data_type='test')
+train_dataset = tg.TGSSaltDataset(train_path, train_ids,data_type='train')
+test_dataset = tg.TGSSaltDataset(test_path, test_ids,data_type='test')
 
 add_train_ids = add_samples(train_dataset,train_ids,count=4000,mean=1.0,variance=0.1)
 add_train_ids.extend(add_samples(train_dataset,train_ids,count=4000,mean=10.0,variance=0.1))
