@@ -53,7 +53,7 @@ def rleToMask(rleString,height,width):
     
     return img
 
-def add_random_gaussian_noise(image,mean,variance):
+def add_random_gaussian_noise(image,mean,variance,add_on):
     """
     Generate noise to a given Image based on required noise type
     From: http://www.xiaoliangbai.com/2016/09/09/more-on-image-noise-generation
@@ -62,17 +62,30 @@ def add_random_gaussian_noise(image,mean,variance):
         image: ndarray (input image data. It will be converted to float)
        
     """
-    row,col,ch= image.shape       
-    mu = mean
-    var = variance
-    sigma = var**0.5
-    gauss = np.array(image.shape)
-    gauss = np.random.normal(mu,sigma,(row,col,ch))
-    gauss = gauss.reshape(row,col,ch)
-    noisy = image + gauss
-    return noisy.astype('uint8')
+    if add_on == 'image':
+       row,col,ch= image.shape       
+       mu = mean
+       var = variance
+       sigma = var**0.5
+       gauss = np.array(image.shape)
+       gauss = np.random.normal(mu,sigma,(row,col,ch))
+       gauss = gauss.reshape(row,col,ch)
+       noisy = image + gauss
+       noisy_img_clipped = np.clip(noisy, 0, 255)
+       return noisy_img_clipped.astype('uint8')
+    else:
+       row,col= image.shape       
+       mu = mean
+       var = variance
+       sigma = var**0.5
+       gauss = np.array(image.shape)
+       gauss = np.random.normal(mu,sigma,(row,col))
+       gauss = gauss.reshape(row,col)
+       noisy = image + gauss
+       noisy_img_clipped = np.clip(noisy, 0, 255)
+       return noisy_img_clipped.astype('uint8')
 
-def generator(train_ids):
+def generator(train_ids,data_type):
   """
   Generator to return inputs for UNet
   
@@ -83,30 +96,52 @@ def generator(train_ids):
   X_feat = np.zeros((len(train_ids), n_features), dtype=np.float32)
   print('Getting and resizing train images and masks ... ')
   sys.stdout.flush()
-  for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
-      path = train_path
+  
+  if data_type == 'train':
+      for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
+          path = train_path
 
-      # Load X
-      img = load_img(path + '/images/' + id_, color_mode='grayscale')
+          # Load X
+          img = load_img(path + '/images/' + id_, color_mode='grayscale')
 
-      x_img = img_to_array(img)
-      x_img = resize(x_img, (128, 128, 1), mode='constant', preserve_range=True)
+          x_img = img_to_array(img)
+          x_img = resize(x_img, (128, 128, 1), mode='constant', preserve_range=True)
 
-      # Create cumsum x
-      x_center_mean = x_img[border:-border, border:-border].mean()
-      x_csum = (np.float32(x_img)-x_center_mean).cumsum(axis=0)
-      x_csum -= x_csum[border:-border, border:-border].mean()
-      x_csum /= max(1e-3, x_csum[border:-border, border:-border].std())
+          # Create cumsum x
+          x_center_mean = x_img[border:-border, border:-border].mean()
+          x_csum = (np.float32(x_img)-x_center_mean).cumsum(axis=0)
+          x_csum -= x_csum[border:-border, border:-border].mean()
+          x_csum /= max(1e-3, x_csum[border:-border, border:-border].std())
 
-      # Load Y
-      mask = img_to_array(load_img(path + '/masks/' + id_[0:10] + '.png', color_mode='grayscale'))
-      mask = resize(mask, (128, 128, 1), mode='constant', preserve_range=True)
+          # Load Y
+          mask = img_to_array(load_img(path + '/masks/' + id_, color_mode='grayscale'))
+          mask = resize(mask, (128, 128, 1), mode='constant', preserve_range=True)
 
-      # Save images
-      X[n, ..., 0] = x_img.squeeze() / 255
-      X[n, ..., 1] = x_csum.squeeze()
-      y[n] = mask / 255
-  return X,y
+          # Save images
+          X[n, ..., 0] = x_img.squeeze() / 255
+          X[n, ..., 1] = x_csum.squeeze()
+          y[n] = mask / 255
+      return X,y
+  else:
+      for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
+          path = test_path
+
+          # Load X
+          img = load_img(path + '/images/' + id_, color_mode='grayscale')
+
+          x_img = img_to_array(img)
+          x_img = resize(x_img, (128, 128, 1), mode='constant', preserve_range=True)
+
+          # Create cumsum x
+          x_center_mean = x_img[border:-border, border:-border].mean()
+          x_csum = (np.float32(x_img)-x_center_mean).cumsum(axis=0)
+          x_csum -= x_csum[border:-border, border:-border].mean()
+          x_csum /= max(1e-3, x_csum[border:-border, border:-border].std())
+
+          # Save images
+          X[n, ..., 0] = x_img.squeeze() / 255
+          X[n, ..., 1] = x_csum.squeeze()
+      return X
 
 def add_samples(dataset,train_ids,count,mean,variance):
   """
@@ -127,10 +162,18 @@ def add_samples(dataset,train_ids,count,mean,variance):
   img_count = len(ids_list)
   for n in range(img_count):
       im, mask = dataset[n]
-      transformed_image = add_random_gaussian_noise(im,mean,variance)
-      save_img(train_path + '/images/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png',transformed_image)
-
-  new_train_ids = next(os.walk(train_path+"images"))[2]
+      transformed_image = add_random_gaussian_noise(im,mean,variance,add_on='image')
+      save_img(train_path + '/images/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png',transformed_image,scale=True)
+      
+      transformed_mask = add_random_gaussian_noise(mask,mean,variance,add_on='mask')
+      
+      #save_img(train_path + '/masks/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png',transformed_mask)
+      
+      
+      io.imsave(train_path + '/masks/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png', transformed_mask)
+      
+  new_train_ids = next(os.walk(train_path+"images"))[2]  
+  #new_mask_ids = next(os.walk(train_path+"masks"))[2]
   return new_train_ids
 
 train_mask = pd.read_csv('train.csv')
@@ -156,24 +199,40 @@ from keras.layers.pooling import MaxPooling2D
 from keras.layers.merge import concatenate
 from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from keras import backend as K
-
+from sklearn.model_selection import train_test_split
 
 train_ids = next(os.walk(train_path+"images"))[2]
+
+#train image + mask data
+train_mask = pd.read_csv('train.csv')
+
+#depth data
+depth = pd.read_csv('depths.csv')
 
 im_width = 128
 im_height = 128
 border = 5
 im_chan = 2 # Number of channels: first is original and second cumsum(axis=0)
 n_features = 1 # Number of extra features, like depth
-#path_train = '../input/train/'
-#path_test = '../input/test/'
 
-add_train_ids = add_samples(dataset,train_ids,count=4000,mean=100.0,variance=10.0)
-X,y = generator(add_train_ids)
+#training path
+train_path = "./"
+test_path = "./"
 
-from sklearn.model_selection import train_test_split
+#list of files
+train_ids = next(os.walk(train_path+"images"))[2]
+test_ids = next(os.walk(test_path+"test/images"))[2]
 
-X_train, X_valid, X_feat_train, X_feat_valid, y_train, y_valid = train_test_split(X, X_feat, y, test_size=0.15, random_state=20511311)
+#define our dataset using our class
+train_dataset = TGSSaltDataset(train_path, train_ids,data_type='train')
+test_dataset = TGSSaltDataset(test_path, test_ids,data_type='test')
+
+add_train_ids = add_samples(train_dataset,train_ids,count=4000,mean=1.0,variance=0.1)
+add_train_ids.extend(add_samples(train_dataset,train_ids,count=4000,mean=10.0,variance=0.1))
+add_train_ids = list(set(add_train_ids))
+X,y = generator(add_train_ids,data_type='train')
+
+X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.15, random_state=42)
 
 callbacks = [
     EarlyStopping(patience=5, verbose=1),
@@ -184,4 +243,4 @@ callbacks = [
 model = UNET.U_Net()
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy']) # The mean_iou metrics seens to leak train and test values...
 
-results = model.fit({'img': X_train, 'feat': X_feat_train}, y_train, batch_size=16, epochs=50, callbacks=callbacks, validation_data=({'img': X_valid, 'feat': X_feat_valid}, y_valid))
+results = model.fit({'img': X_train}, y_train, batch_size=16, epochs=50, callbacks=callbacks, validation_data=({'img': X_valid}, y_valid))
