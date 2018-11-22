@@ -12,6 +12,7 @@ import torch
 import TGSSaltDataset as tg
 import UNET
 import skimage.io as io
+import pdb
 #just in case we need a backup datasets
 from torch.utils import data
 
@@ -69,7 +70,7 @@ def add_random_gaussian_noise(image,mean,variance,add_on):
        var = variance
        sigma = var**0.5
        gauss = np.array(image.shape)
-       gauss = np.random.normal(mu,sigma,(row,col,ch))
+       gauss = np.random.normal(mu,sigma,(row,col,ch))*255
        gauss = gauss.reshape(row,col,ch)
        noisy = image + gauss
        noisy_img_clipped = np.clip(noisy, 0, 255)
@@ -103,7 +104,7 @@ def generator(train_ids,data_type):
           path = train_path
 
           # Load X
-          img = load_img(path + '/images/' + id_, color_mode='grayscale')
+          img = load_img(path + 'images/' + id_)
 
           x_img = img_to_array(img)
           x_img = resize(x_img, (128, 128, 1), mode='constant', preserve_range=True)
@@ -115,7 +116,7 @@ def generator(train_ids,data_type):
           x_csum /= max(1e-3, x_csum[border:-border, border:-border].std())
 
           # Load Y
-          mask = img_to_array(load_img(path + '/masks/' + id_, color_mode='grayscale'))
+          mask = img_to_array(load_img(path + 'masks/' + id_))
           mask = resize(mask, (128, 128, 1), mode='constant', preserve_range=True)
 
           # Save images
@@ -128,7 +129,7 @@ def generator(train_ids,data_type):
           path = test_path
 
           # Load X
-          img = load_img(path + '/images/' + id_, color_mode='grayscale')
+          img = load_img(path + '/images/' + id_)
 
           x_img = img_to_array(img)
           x_img = resize(x_img, (128, 128, 1), mode='constant', preserve_range=True)
@@ -166,7 +167,7 @@ def add_samples(dataset,train_ids,count,mean,variance):
       transformed_image = add_random_gaussian_noise(im,mean,variance,add_on='image')
       save_img(train_path + '/images/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png',transformed_image,scale=True)
       
-      transformed_mask = add_random_gaussian_noise(mask,mean,variance,add_on='mask')
+      transformed_mask = mask#add_random_gaussian_noise(mask,mean,variance,add_on='mask')
       
       #save_img(train_path + '/masks/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png',transformed_mask)
       
@@ -219,27 +220,29 @@ train_path = "./train/"
 test_path = "./test/"
 
 #list of files
-train_ids = next(os.walk(train_path+"images"))[2]
+train_ids = next(os.walk(train_path+"masks"))[2]
 test_ids = next(os.walk(test_path+"images"))[2]
 
-#define our dataset using our class
-train_dataset = tg.TGSSaltDataset(train_path, train_ids,data_type='train')
-test_dataset = tg.TGSSaltDataset(test_path, test_ids,data_type='test')
+file_list_train = list(train_mask['id'].values)
 
-add_train_ids = add_samples(train_dataset,train_ids,count=4000,mean=1.0,variance=0.1)
-add_train_ids.extend(add_samples(train_dataset,train_ids,count=4000,mean=10.0,variance=0.1))
+#define our dataset using our class
+train_dataset = tg.TGSSaltDataset(train_path, train_ids, data_type='train')
+test_dataset = tg.TGSSaltDataset(test_path, test_ids,data_type='test')
+v = .001
+add_train_ids = add_samples(train_dataset,train_ids,count=4000,mean=0,variance=v)
+#add_train_ids.extend(add_samples(train_dataset,train_ids,count=4000,mean=0.0,variance=v))
 add_train_ids = list(set(add_train_ids))
 X,y = generator(add_train_ids,data_type='train')
 
 X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.15, random_state=42)
-
+save_str = 'model-tgs-salt-var-{0}--noise-doubled-'.format(v) + '-acc-{val_acc:.2f}-epoch-{epoch:02d}.h5'
 callbacks = [
-    #EarlyStopping(patience=5, verbose=1),
-    ReduceLROnPlateau(patience=3, verbose=1),
-    ModelCheckpoint('model-tgs-salt-1.h5', verbose=1, save_best_only=True, save_weights_only=True)
+    EarlyStopping(patience=7, verbose=1), #was patience=3 for LRNon
+    ReduceLROnPlateau(patience=5, verbose=1), #wast patience=3
+    ModelCheckpoint(save_str, verbose=1, save_best_only=True, save_weights_only=True, monitor='val_acc')
 ]
 
 model = UNET.U_Net()
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy']) # The mean_iou metrics seens to leak train and test values...
 
-results = model.fit({'img': X_train}, y_train, batch_size=16, epochs=50, callbacks=callbacks, validation_data=({'img': X_valid}, y_valid))
+results = model.fit({'img': X_train}, y_train, batch_size=16, epochs=100, callbacks=callbacks, validation_data=({'img': X_valid}, y_valid))
