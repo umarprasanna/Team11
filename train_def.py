@@ -111,14 +111,14 @@ def image_generator(X_train,y_train,batch_size):
     mean = 0.0
     variance = np.random.uniform(0.01, 1.0)
     #X_train,y_train = get_data(path_train,train_ids,train=True) # Get arrays          
+    while True:
     batch_images = np.zeros((batch_size, 128,128,1))
     batch_masks = np.zeros((batch_size,128,128,1))
-    while True:
       for i in range(batch_size):
           # choose random index in features
           index= np.random.choice(len(X_train),1)[0]
           batch_images[i] = add_random_gaussian_noise(X_train[index],mean,variance)
-          batch_masks[i] = add_random_gaussian_noise(y_train[index],mean,variance)
+          batch_masks[i] = y_train[index]
       yield batch_images, batch_masks
     
 #training path
