@@ -99,8 +99,8 @@ def add_random_gaussian_noise(image,mean,variance):
     gauss = np.random.normal(mu,sigma,(row,col,ch))
     gauss = gauss.reshape(row,col,ch)
     noisy = image + gauss
-    noisy_img_clipped = np.clip(noisy, 0, 255)
-    return noisy_img_clipped.astype('uint8')
+    noisy_img_clipped = np.clip(noisy, 0, 1)
+    return noisy_img_clipped
 
 def image_generator(X_train,y_train,batch_size):
     """
