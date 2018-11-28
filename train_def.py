@@ -353,7 +353,7 @@ for i in range(len(preds_test)):
     preds_test_reshaped.append(resize(np.squeeze(preds_test[i]), 
                                        (101, 101), 
                                        mode='constant', preserve_range=True))
-pred_dict = {id_[:-4]:RLenc(np.round(preds_test_reshaped[i] > 0.2)) for i,id_ in tqdm(enumerate(test_ids))}
+pred_dict = {id_[:-4]:RLenc(np.round(preds_test_reshaped[i] > best_thres)) for i,id_ in tqdm(enumerate(test_ids))}
 
 #Create submission file
 sub = pd.DataFrame.from_dict(pred_dict,orient='index')
