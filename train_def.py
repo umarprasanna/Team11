@@ -65,16 +65,20 @@ def add_random_gaussian_noise(image,mean,variance,add_on):
        
     """
     if add_on == 'image':
-       row,col,ch= image.shape       
-       mu = mean
-       var = variance
-       sigma = var**0.5
-       gauss = np.array(image.shape)
-       gauss = np.random.normal(mu,sigma,(row,col,ch))*255
-       gauss = gauss.reshape(row,col,ch)
-       noisy = image + gauss
-       noisy_img_clipped = np.clip(noisy, 0, 255)
-       return noisy_img_clipped.astype('uint8')
+       if np.random.rand() > -1:
+           row,col,ch= image.shape       
+           mu = mean
+           var = variance
+           sigma = var**0.5
+           gauss = np.array(image.shape)
+           gauss = np.random.normal(mu,sigma,(row,col,ch))*255
+           gauss = gauss.reshape(row,col,ch)
+           noisy = image + gauss
+           noisy_img_clipped = np.clip(noisy, 0, 255)
+           ret_img = noisy_img_clipped
+       else:
+           ret_img = np.flip(image, axis=0)
+       return ret_img[2:99,2:99].astype('uint8')
     else:
        row,col= image.shape       
        mu = mean
@@ -104,7 +108,7 @@ def generator(train_ids,data_type):
           path = train_path
 
           # Load X
-          img = load_img(path + 'images/' + id_)
+          img = load_img(path + 'generated/' + id_)
 
           x_img = img_to_array(img)
           x_img = resize(x_img, (128, 128, 1), mode='constant', preserve_range=True)
