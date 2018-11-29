@@ -1,5 +1,5 @@
 import os
-#matrix math
+# math
 import numpy as np
 #read/write image data
 import imageio
@@ -12,6 +12,7 @@ import torch
 import TGSSaltDataset as tg
 import UNET
 import skimage.io as io
+import skimage.transform as transform
 import pdb
 #just in case we need a backup datasets
 from torch.utils import data
@@ -44,7 +45,7 @@ def rleToMask(rleString,height,width):
             index -= 1
             img[index:index+length] = 255
         
-        
+ 
         #reshape
         img = img.reshape(cols,rows)
         img = img.T
@@ -77,8 +78,11 @@ def add_random_gaussian_noise(image,mean,variance,add_on):
            noisy_img_clipped = np.clip(noisy, 0, 255)
            ret_img = noisy_img_clipped
        else:
-           ret_img = np.flip(image, axis=0)
-       return ret_img[2:99,2:99].astype('uint8')
+           if np.random.rand() > .5:
+                ret_img = np.flip(image, axis=1)
+           else:
+                ret_img = np.flip(image, axis=0) 
+       return ret_img
     else:
        row,col= image.shape       
        mu = mean
@@ -106,10 +110,10 @@ def generator(train_ids,data_type):
   if data_type == 'train':
       for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
           path = train_path
-
+          print(id_)
           # Load X
-          img = load_img(path + 'generated/' + id_)
-
+          img = load_img(path + '/generated/' + id_)
+          
           x_img = img_to_array(img)
           x_img = resize(x_img, (128, 128, 1), mode='constant', preserve_range=True)
 
@@ -149,7 +153,7 @@ def generator(train_ids,data_type):
           X[n, ..., 1] = x_csum.squeeze()
       return X
 
-def add_samples(dataset,train_ids,count,mean,variance):
+def add_samples(dataset,train_ids,count,mean,variance,no_noise):
   """
   Creates maximum of 4000 images with noise added. Returns a list of updated train ids inclusive of added noisy images and clean masks
   dataset: dataset class generated object
@@ -168,17 +172,18 @@ def add_samples(dataset,train_ids,count,mean,variance):
   img_count = len(ids_list)
   for n in range(img_count):
       im, mask = dataset[n]
-      transformed_image = add_random_gaussian_noise(im,mean,variance,add_on='image')
-      save_img(train_path + '/images/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png',transformed_image,scale=True)
-      
+      save_img(train_path + 'generated/'+ train_ids[n],im ,scale=True)      
+      if no_noise == False:
+           transformed_image = add_random_gaussian_noise(im,mean,variance,add_on='image')
+           save_img(train_path + 'generated/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png',transformed_image,scale=True)
       transformed_mask = mask#add_random_gaussian_noise(mask,mean,variance,add_on='mask')
       
       #save_img(train_path + '/masks/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png',transformed_mask)
       
       
       io.imsave(train_path + '/masks/'+ train_ids[n].strip('.png')+ '_t'+str(mean)+'_'+str(variance)+ '.png', transformed_mask)
-      
-  new_train_ids = next(os.walk(train_path+"images"))[2]  
+       
+  new_train_ids = next(os.walk(train_path+"generated"))[2]  
   #new_mask_ids = next(os.walk(train_path+"masks"))[2]
   return new_train_ids
 
@@ -228,25 +233,31 @@ train_ids = next(os.walk(train_path+"masks"))[2]
 test_ids = next(os.walk(test_path+"images"))[2]
 
 file_list_train = list(train_mask['id'].values)
-
+v = 0.1
 #define our dataset using our class
-train_dataset = tg.TGSSaltDataset(train_path, train_ids, data_type='train')
+train_dataset = tg.TGSSaltDataset(train_path, train_ids[0:3400], data_type='train')
+other_half = tg.TGSSaltDataset(train_path, train_ids[3400:4000], data_type='train') 
 test_dataset = tg.TGSSaltDataset(test_path, test_ids,data_type='test')
-v = .001
-add_train_ids = add_samples(train_dataset,train_ids,count=4000,mean=0,variance=v)
-#add_train_ids.extend(add_samples(train_dataset,train_ids,count=4000,mean=0.0,variance=v))
+add_train_ids = add_samples(train_dataset,train_ids[0:3400],count=3400,mean=0,variance=v, no_noise=True)
+v = 0.1
+add_samples(other_half,train_ids[3400:4000], count=600, mean=0, variance=0, no_noise=True)
+add_train_ids.extend(add_samples(train_dataset,train_ids[0:3400],count=3400,mean=0.0,variance=v, no_noise=True))
+add_train_ids.extend(add_samples(train_dataset,train_ids[0:3400],count=3400,mean=0.0,variance=v, no_noise=True))
 add_train_ids = list(set(add_train_ids))
-X,y = generator(add_train_ids,data_type='train')
+X_train, y_train = generator(add_train_ids,data_type='train')
+X_valid, y_valid = generator(train_ids[3400:4000],data_type='train')
+ 
+pdb.set_trace()
 
-X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0.15, random_state=42)
+#X_train, X_valid, y_train, y_valid = train_test_split(X, y, test_size=0, random_state=42)
 save_str = 'model-tgs-salt-var-{0}--noise-doubled-'.format(v) + '-acc-{val_acc:.2f}-epoch-{epoch:02d}.h5'
 callbacks = [
-    EarlyStopping(patience=7, verbose=1), #was patience=3 for LRNon
-    ReduceLROnPlateau(patience=5, verbose=1), #wast patience=3
+    EarlyStopping(patience=10, verbose=1), #was patience=3 for LRNon
+    ReduceLROnPlateau(patience=5, verbose=1), #was patience=3
     ModelCheckpoint(save_str, verbose=1, save_best_only=True, save_weights_only=True, monitor='val_acc')
 ]
 
 model = UNET.U_Net()
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy']) # The mean_iou metrics seens to leak train and test values...
 
-results = model.fit({'img': X_train}, y_train, batch_size=16, epochs=100, callbacks=callbacks, validation_data=({'img': X_valid}, y_valid))
+results = model.fit({'img': X_train}, y_train, batch_size=16, epochs=50, callbacks=callbacks, validation_data=({'img': X_valid}, y_valid))
