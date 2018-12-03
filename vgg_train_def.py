@@ -17,6 +17,9 @@ from keras.layers import Dense, Activation, Flatten
 import tensorflow as tf
 from torch.utils import data
 import pdb
+from CustomKeras_IouMetric import competitionMetric2
+
+
 #visualization
 def plot2x2Array(image, mask):
     #invoke matplotlib!
@@ -90,7 +93,7 @@ train_path = "./train/"
 #list of files
 file_list = list(train_mask['id'].values)
 #define our dataset using our class
-dataset = tg.TGSSaltDataset(train_path, file_list)
+#dataset = tg.TGSSaltDataset(train_path, file_list)
 
 import sys
 from tqdm import tqdm
@@ -111,7 +114,7 @@ test_ids = train_ids[int(len(train_ids) * .85):len(train_ids)]
 train_ids = train_ids[0:int(len(train_ids) * .85)] 
 
 #Add additional samples
-new_train_ids = add_samples(dataset,train_ids,count=4000,mean=10.0,variance=0.1)
+#new_train_ids = add_samples(dataset,train_ids,count=4000,mean=10.0,variance=0.1)
 
 im_width = 128
 im_height = 128
@@ -120,13 +123,13 @@ im_chan = 3 # Number of channels: first is original and second cumsum(axis=0)
 n_features = 1 # Number of extra features, like depth
 #path_train = '../input/train/'
 #path_test = '../input/test/'
-trainG = vggGenerator(train_ids, train_path)
-testG = vggGenerator(test_ids, train_path)
-
+trainG = vggGenerator(train_ids, train_path, pred_size=4, batch_size=256)
+testG = vggGenerator(test_ids, train_path, pred_size=4,batch_size=32)
+save_str = 'vgg_model-tgs-salt-var_.1_left_right-' + '-acc-{val_competitionMetric2:.2f}-epoch-{epoch:02d}.h5'
 callbacks = [
-    EarlyStopping(patience=5, verbose=1),
-    ReduceLROnPlateau(patience=3, verbose=1),
-    ModelCheckpoint('model-tgs-salt-1.h5', verbose=1, save_best_only=True, save_weights_only=True)
+    #EarlyStopping(patience=10, verbose=1), #was patience=3 for LRNon
+    ReduceLROnPlateau(patience=5, verbose=1), #was patience=3
+    ModelCheckpoint(save_str, verbose=1, save_best_only=False, period = 10, save_weights_only=True, monitor='val_competitionMetric2')
 ]
 
 model = vgg16.VGG16(False, input_shape=(48, 48, 3))
@@ -142,10 +145,11 @@ model.add(Dense(1024, activation='relu'))
 #model.add(Activation('relu'))
 model.add(Dense(512, activation='relu'))
 #model.add(Activation('softmax'))
-model.add(Dense(1))
+model.add(Dense(16))
+model.add(Reshape((4, 4)))
 model.add(Activation('relu'))
 model.summary()
-model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy']) # The mean_iou metrics seens to leak train and test values...
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[competitionMetric2]) # The mean_iou metrics seens to leak train and test values...
 #results = model.fit({'input_1': X_train, 'feat': X_feat_train}, y_train, batch_size=16, epochs=50, callbacks=callbacks, validation_data=({'img': X_valid, 'feat': X_feat_valid}, y_valid))
 #NEED TO REDUCE y TO SMALLER region
 
